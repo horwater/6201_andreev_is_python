@@ -81,7 +81,6 @@ def main():
     plt.xlabel("x")
     plt.ylabel("y(x)")
     plt.title("График функции")
-    plt.legend()
     plt.grid(True)
     plt.show()
 
