@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+# Загрузка конфиг-файла
 def parse_config(filename):
-    # Загрузка конфиг-файла
     with open(filename, "r") as file:
         config = json.load(file)
     return config
@@ -85,6 +85,7 @@ def main():
     plt.grid(True)
     plt.show()
 
-#вызов функции
+
+# Вызов функции
 if __name__ == "__main__":
     main()
