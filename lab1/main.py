@@ -85,6 +85,6 @@ def main():
     plt.grid(True)
     plt.show()
 
-
+#вызов функции
 if __name__ == "__main__":
     main()
