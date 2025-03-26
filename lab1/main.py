@@ -4,7 +4,7 @@ from scipy.ndimage import convolve
 from PIL import Image
 import os
 
-# API configuration
+# API конфигурация
 API_KEY = 'live_xJowRcD2GFmlEhuAjQkdZhH4axl47FGCfI1JL2KHRs1HgYyGUmt4y7GxV7NvLufg'
 API_URL = 'https://api.thecatapi.com/v1/images/search'
 HEADERS = {'x-api-key': API_KEY}
@@ -12,7 +12,7 @@ OUTPUT_DIR = 'output_images'  # Папка для сохранения резу�
 
 
 def get_animal_image():
-    """получение рандомного изображения по API ключу"""
+    # получение изображения по API ключу
     params = {
         'has_breeds':1
     }
@@ -26,6 +26,7 @@ def get_animal_image():
             raise ValueError("No data received from API")
 
         image_url = data[0]['url']
+        # добавлена проверка на то, что массив изобраения не равен 0
         breed_info = data[0].get('breeds', [{}])[0] if data[0].get('breeds') else {}
         breed_name = breed_info.get('name', 'unknown').replace(' ', '_').lower()
 
@@ -37,12 +38,12 @@ def get_animal_image():
 
 
 def download_image(url, filename):
-    """Download image from URL and save to file"""
+    # загрузка изображения и сохранение его оригинала
     try:
         response = requests.get(url, stream=True)
         response.raise_for_status()
 
-        # Создаем папку, если она не существует
+        # Создаем папку для изображений, если она не существует
         os.makedirs(os.path.dirname(filename), exist_ok=True)
 
         with open(filename, 'wb') as f:
@@ -56,10 +57,7 @@ def download_image(url, filename):
 
 
 def custom_convolution(image, kernel):
-    """
-    Custom convolution implementation without library functions
-    Handles both grayscale and RGB images
-    """
+    # ручная свертка без использования библиотек
     if len(image.shape) == 2:  # Grayscale
         return _convolve_2d(image, kernel)
     elif len(image.shape) == 3:  # RGB
@@ -72,53 +70,53 @@ def custom_convolution(image, kernel):
 
 
 def _convolve_2d(image, kernel):
-    """2D convolution implementation for single channel"""
-    # Flip kernel for convolution
+    # функция 2д свертки для одного канала (проходит по 3м каналам для rgb)
+    # переворот ядра для свертки
     kernel = np.flipud(np.fliplr(kernel))
 
     # Pad the image
     pad_size = kernel.shape[0] // 2
+    # создание боковых полей изображения (резервные пиксели)
     padded = np.pad(image, pad_size, mode='reflect')
 
-    # Prepare output array
+    # подготовка выходного массива
     output = np.zeros_like(image)
 
-    # Perform convolution
+    # суть свертка
     for y in range(image.shape[0]):
         for x in range(image.shape[1]):
             region = padded[y:y + kernel.shape[0], x:x + kernel.shape[1]]
             output[y, x] = np.sum(region * kernel)
 
-    # Clip values to valid range
+    # обрезка значений до допустимых
     return np.clip(output, 0, 255).astype(np.uint8)
 
 
 def process_images(image_path, breed_name):
-    """Process the image using both methods and save results"""
-    # Load image
+    # загрузка изображения
     img = Image.open(image_path)
     img_array = np.array(img)
 
-    # Define sharpening kernel (3x3 with averaging over 5 samples)
+    # ядро для повышения резкости
     sharpening_kernel = np.array([
         [-1, -1, -1],
         [-1, 9, -1],
         [-1, -1, -1]
     ]) / 5.0
 
-    # Process with custom convolution
+    # процесс безбиблиотечной свертки
     custom_result = custom_convolution(img_array, sharpening_kernel)
     custom_filename = os.path.join(OUTPUT_DIR, f"custom_sharpened_{breed_name}.jpg")
     Image.fromarray(custom_result).save(custom_filename)
 
-    # Process with SciPy convolution (fixed for RGB images)
-    if len(img_array.shape) == 3:  # RGB image
+    # процесс свертки scipy
+    if len(img_array.shape) == 3:  # RGB проверка
         scipy_result = np.zeros_like(img_array, dtype=np.float32)
         for i in range(3):
             scipy_result[:, :, i] = convolve(img_array[:, :, i].astype(float),
                                            sharpening_kernel,
                                            mode='reflect')
-    else:  # Grayscale
+    else:  # серые тона
         scipy_result = convolve(img_array.astype(float), sharpening_kernel, mode='reflect')
 
     scipy_result = np.clip(scipy_result, 0, 255).astype(np.uint8)
@@ -137,12 +135,12 @@ def main():
         # Создаем папку для выходных файлов
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-        # Step 1: Get image from API
+        # получение изображения
         image_url, breed_name = get_animal_image()
         original_filename = os.path.join(OUTPUT_DIR, f"original_{breed_name}.jpg")
         download_image(image_url, original_filename)
 
-        # Steps 2-4: Process and save images
+        # свертка и сохранение изображения
         results = process_images(original_filename, breed_name)
 
         print("\nProcessing complete. Saved files:")
