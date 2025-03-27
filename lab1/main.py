@@ -134,7 +134,7 @@ def process_image(image_path, breed_name):
             for i in range(3):
                 scipy_result[:, :, i] = convolve(img_array[:, :, i].astype(float),
                                                  KERNEL, mode='reflect')
-        else:  # Grayscale
+        else:  # серые тона
             scipy_result = convolve(img_array.astype(float), KERNEL, mode='reflect')
 
         scipy_result = np.clip(scipy_result, 0, 255).astype(np.uint8)
@@ -178,5 +178,4 @@ def main():
     return 0
 
 
-if __name__ == "__main__":
-    exit(main())
+main()
