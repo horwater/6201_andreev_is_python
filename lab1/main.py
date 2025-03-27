@@ -22,7 +22,7 @@ def get_animal_image():
     """Получение изображения животного через API"""
     try:
         response = requests.get(API_URL, headers=HEADERS,
-                                params={'has_breeds': True, 'limit': 1},
+                                params={'has_breeds': 1, 'limit': 1},
                                 timeout=10)
         response.raise_for_status()
         data = response.json()
