@@ -36,25 +36,6 @@ def get_animal_image():
         print(f"Error fetching image from API: {e}")
         raise
 
-def normalize_histogram(image):
-    """Нормализация гистограммы изображения"""
-    if len(image.shape) != 3:
-        raise ValueError("Image must be in RGB format")
-
-    normalized = image.copy().astype(float)
-
-    for channel in range(3):
-        channel_data = normalized[:, :, channel]
-        min_val = np.min(channel_data)
-        max_val = np.max(channel_data)
-
-        if max_val != min_val:
-            normalized[:, :, channel] = 255 * (channel_data - min_val) / (max_val - min_val)
-        else:
-            normalized[:, :, channel] = channel_data
-
-    return np.clip(normalized, 0, 255).astype(np.uint8)
-
 
 def download_image(url, filename):
     """Загрузка и сохранение изображения"""
@@ -85,8 +66,7 @@ def custom_convolution(image, kernel):
     else:
         raise ValueError("Unsupported image dimensions")
 
-    # Применяем нормализацию гистограммы
-    return normalize_histogram(result) if len(image.shape) == 3 else result
+    return np.clip(result, 0, 255).astype(np.uint8)
 
 
 def _convolve_2d(image, kernel):
@@ -110,12 +90,12 @@ def process_images(image_path, breed_name):
         img = Image.open(image_path)
         img_array = np.array(img)
 
-        # Ядро для повышения резкости
+        # Ядро для повышения резкости 5x5
         sharpening_kernel = np.array([
-            [-1, -1, -1],
-            [-1, 9, -1],
-            [-1, -1, -1]
-        ]) / 5.0
+            [0,-1,0],
+            [-1,5,-1],
+            [0,-1,0]
+        ])
 
         # 1. Ручная свертка
         custom_result = custom_convolution(img_array, sharpening_kernel)
@@ -127,8 +107,8 @@ def process_images(image_path, breed_name):
             scipy_result = np.zeros_like(img_array, dtype=np.float32)
             for i in range(3):
                 scipy_result[:, :, i] = convolve(img_array[:, :, i].astype(float),
-                                                 sharpening_kernel,
-                                                 mode='reflect')
+                                               sharpening_kernel,
+                                               mode='reflect')
         else:  # серые тона
             scipy_result = convolve(img_array.astype(float), sharpening_kernel, mode='reflect')
 
@@ -157,8 +137,8 @@ def main():
 
         print("\nProcessing complete. Saved files:")
         print(f"- Original: {results['original']}")
-        print(f"- Custom convolution (with histogram normalization): {results['custom']}")
-        print(f"- SciPy convolution (original histogram): {results['scipy']}")
+        print(f"- Custom convolution: {results['custom']}")
+        print(f"- SciPy convolution: {results['scipy']}")
 
     except Exception as e:
         print(f"\nAn error occurred: {e}")
