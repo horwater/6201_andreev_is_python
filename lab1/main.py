@@ -84,6 +84,5 @@ def main():
     plt.grid(True)
     plt.show()
 
-
 # Вызов функции
 main()
