@@ -14,14 +14,16 @@ API_URL = os.getenv('CAT_API_URL', 'https://api.thecatapi.com/v1/images/search')
 HEADERS = {'x-api-key': API_KEY} if API_KEY else {}
 OUTPUT_DIR = 'processed_images'
 KERNEL = np.array([[0, -1, 0],
-                   [-1, 3, -1],
+                   [-1, 5, -1],
                    [0, -1, 0]])  # Ядро для повышения резкости 3x3
 
 
 def get_animal_image():
     """Получение изображения животного через API"""
     try:
-        response = requests.get(API_URL, headers=HEADERS, params={'has_breeds': True, 'limit': 1}, timeout=10)
+        response = requests.get(API_URL, headers=HEADERS,
+                                params={'has_breeds': True, 'limit': 1},
+                                timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -39,25 +41,25 @@ def get_animal_image():
 
 
 def imageHGistogram(image):
-    min_red = np.min(image[:, :, 0])
-    max_red = np.max(image[:, :, 0])
-    min_green = np.min(image[:, :, 1])
-    max_green = np.max(image[:, :, 1])
-    min_blue = np.min(image[:, :, 2])
-    max_blue = np.max(image[:, :, 2])
+    """Выравнивание гистограммы изображения"""
+    if len(image.shape) != 3 or image.shape[2] != 3:
+        raise ValueError("Функция работает только с RGB изображениями")
 
-    k_red = 255 / (max_red - min_red)
-    k_green = 255 / (max_green - min_green)
-    k_blue = 255 / (max_blue - min_blue)
+    # Копируем массив, чтобы не изменять оригинал
+    result = image.copy().astype(np.float32)
 
-    b_red = 0 - (k_red * min_red)
-    b_green = 0 - (k_red * min_red)
-    b_blue = 0 - (k_red * min_red)
+    for i in range(3):
+        channel = result[:, :, i]
+        min_val = np.min(channel)
+        max_val = np.max(channel)
 
-    image[:, :, 0] = k_red * image[:, :, 0] + b_red
-    image[:, :, 1] = k_green * image[:, :, 1] + b_green
-    image[:, :, 2] = k_blue * image[:, :, 2] + b_blue
-    return image
+        if max_val - min_val > 0:
+            result[:, :, i] = 255 * (channel - min_val) / (max_val - min_val)
+        else:
+            result[:, :, i] = channel
+
+    return np.clip(result, 0, 255).astype(np.uint8)
+
 
 def download_image(url, filename):
     """Загрузка и сохранение изображения"""
@@ -94,7 +96,7 @@ def manual_convolution(image, kernel):
 def _convolve_channel(channel, kernel):
     """Свертка для одного канала"""
     # Подготовка выходного массива
-    output = np.zeros_like(channel)
+    output = np.zeros_like(channel, dtype=np.float32)
 
     # Добавление padding
     pad_size = kernel.shape[0] // 2
@@ -118,17 +120,22 @@ def process_image(image_path, breed_name):
 
         # 1. Ручная свертка
         manual_result = manual_convolution(img_array, KERNEL)
-        manual_results_post =imageHGistogram(manual_result)
+
+        # Применяем выравнивание гистограммы только для RGB изображений
+        if len(manual_result.shape) == 3:
+            manual_result = imageHGistogram(manual_result)
+
         manual_filename = os.path.join(OUTPUT_DIR, f"manual_{breed_name}.jpg")
-        Image.fromarray(manual_results_post).save(manual_filename)
+        Image.fromarray(manual_result).save(manual_filename)
 
         # 2. Scipy свертка
         if len(img_array.shape) == 3:  # RGB
-            scipy_result = np.zeros_like(img_array)
+            scipy_result = np.zeros_like(img_array, dtype=np.float32)
             for i in range(3):
-                scipy_result[:, :, i] = convolve(img_array[:, :, i], KERNEL, mode='reflect')
+                scipy_result[:, :, i] = convolve(img_array[:, :, i].astype(float),
+                                                 KERNEL, mode='reflect')
         else:  # Grayscale
-            scipy_result = convolve(img_array, KERNEL, mode='reflect')
+            scipy_result = convolve(img_array.astype(float), KERNEL, mode='reflect')
 
         scipy_result = np.clip(scipy_result, 0, 255).astype(np.uint8)
         scipy_filename = os.path.join(OUTPUT_DIR, f"scipy_{breed_name}.jpg")
