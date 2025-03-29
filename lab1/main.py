@@ -80,7 +80,7 @@ def main():
     )
     plt.xlabel("x")
     plt.ylabel("y(x)")
-    plt.title("График функций")
+    plt.title("График функции")
     plt.grid(True)
     plt.show()
 
