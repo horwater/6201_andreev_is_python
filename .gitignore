@@ -1,4 +1,7 @@
 .venv1
-.env
 .idea
 processed_images
+*.env
+
+
+

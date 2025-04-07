@@ -9,9 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Конфигурация API
-API_KEY = os.getenv('CAT_API_KEY', '')
-API_URL = os.getenv('CAT_API_URL', 'https://api.thecatapi.com/v1/images/search')
-HEADERS = {'x-api-key': API_KEY} if API_KEY else {}
+API_URL = os.getenv('CAT_API_URL')
 OUTPUT_DIR = 'processed_images'
 KERNEL = np.array([[0, -1, 0],
                    [-1, 5, -1],
@@ -21,9 +19,14 @@ KERNEL = np.array([[0, -1, 0],
 def get_animal_image():
     """Получение изображения животного через API"""
     try:
-        response = requests.get(API_URL, headers=HEADERS,
-                                params={'has_breeds': 1, 'limit': 1},
-                                timeout=10)
+        response = requests.get(
+            API_URL,
+            params={
+                "has_breeds": 1,
+                "limit": 1,
+                "api_key": os.getenv('CAT_API_KEY')
+            }
+        )
         response.raise_for_status()
         data = response.json()
 
@@ -31,8 +34,14 @@ def get_animal_image():
             raise ValueError("No data received from API")
 
         image_url = data[0]['url']
-        breed_info = data[0].get('breeds', [{}])[0]
-        breed_name = breed_info.get('name', 'unknown').replace(' ', '_').lower()
+
+        # Проверяем, есть ли информация о породе
+        if 'breeds' not in data[0] or not data[0]['breeds']:
+            print("Warning: No breed information available, using 'unknown'")
+            breed_name = 'unknown'
+        else:
+            breed_info = data[0]['breeds'][0]
+            breed_name = breed_info.get('name', 'unknown').replace(' ', '_').lower()
 
         return image_url, breed_name
     except Exception as e:
@@ -133,7 +142,7 @@ def process_image(image_path, breed_name):
             scipy_result = np.zeros_like(img_array, dtype=np.float32)
             for i in range(3):
                 scipy_result[:, :, i] = convolve(img_array[:, :, i].astype(float),
-                                                 KERNEL, mode='reflect')
+                                               KERNEL, mode='reflect')
         else:  # серые тона
             scipy_result = convolve(img_array.astype(float), KERNEL, mode='reflect')
 
