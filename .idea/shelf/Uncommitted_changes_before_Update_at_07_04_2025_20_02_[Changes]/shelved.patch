@@ -1,0 +1,16 @@
+Index: lab1/.env
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>API_KEY = 'live_xJowRcD2GFmlEhuAjQkdZhH4axl47FGCfI1JL2KHRs1HgYyGUmt4y7GxV7NvLufg'\r\nAPI_URL = 'https://api.thecatapi.com/v1/images/search'\r\nHEADERS = {'x-api-key': API_KEY}
+===================================================================
+diff --git a/lab1/.env b/lab1/.env
+--- a/lab1/.env	(revision 396b6bd1517e2e0364ddf8b90cc136c338de25a9)
++++ b/lab1/.env	(date 1744040085352)
+@@ -1,3 +1,3 @@
+-API_KEY = 'live_xJowRcD2GFmlEhuAjQkdZhH4axl47FGCfI1JL2KHRs1HgYyGUmt4y7GxV7NvLufg'
+-API_URL = 'https://api.thecatapi.com/v1/images/search'
+-HEADERS = {'x-api-key': API_KEY}
+\ No newline at end of file
++CAT_API_URL = https://api.thecatapi.com/v1/images/search?include_breeds=1
++CAT_API_KEY = 'live_xJowRcD2GFmlEhuAjQkdZhH4axl47FGCfI1JL2KHRs1HgYyGUmt4y7GxV7NvLufg'
++
