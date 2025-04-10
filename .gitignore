@@ -1,1 +1,4 @@
 .venv1
+.idea
+.env
+processed_images
