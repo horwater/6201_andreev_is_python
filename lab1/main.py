@@ -5,186 +5,257 @@ from PIL import Image
 import os
 from dotenv import load_dotenv
 
+
 # Загрузка переменных окружения из .env файла
 load_dotenv()
 
-# Конфигурация API
-API_URL = os.getenv('CAT_API_URL')
-OUTPUT_DIR = 'processed_images'
-KERNEL = np.array([[0, -1, 0],
-                   [-1, 5, -1],
-                   [0, -1, 0]])  # Ядро для повышения резкости 3x3
 
+class ImageProcessor:
+    """Класс для обработки изображений животных"""
 
-def get_animal_image():
-    """Получение изображения животного через API"""
-    try:
-        response = requests.get(
-            API_URL,
-            params={
-                "has_breeds": 1,
-                "limit": 1,
-                "api_key": os.getenv('CAT_API_KEY')
-            }
-        )
-        response.raise_for_status()
-        data = response.json()
+    # Конфигурация API (классовые атрибуты)
+    API_URL = os.getenv('CAT_API_URL')
+    OUTPUT_DIR = 'processed_images'
+    KERNEL = np.array([[0, -1, 0],
+                       [-1, 5, -1],
+                       [0, -1, 0]])  # Ядро для повышения резкости 3x3
 
-        if not data:
-            raise ValueError("No data received from API")
+    def __init__(self, image_url=None, breed_name=None, image_array=None):
+        """Инициализация объекта ImageProcessor"""
+        self._image_url = image_url
+        self._breed_name = breed_name
+        self._image_array = image_array
 
-        image_url = data[0]['url']
+    def get_image_url(self):
+        """Получить URL изображения"""
+        return self._image_url
 
-        # Проверяем, есть ли информация о породе
-        if 'breeds' not in data[0] or not data[0]['breeds']:
-            print("Warning: No breed information available, using 'unknown'")
-            breed_name = 'unknown'
-        else:
-            breed_info = data[0]['breeds'][0]
-            breed_name = breed_info.get('name', 'unknown').replace(' ', '_').lower()
+    def get_breed_name(self):
+        """Получить название породы"""
+        return self._breed_name
 
-        return image_url, breed_name
-    except Exception as e:
-        print(f"Error fetching image from API: {e}")
-        raise
+    def get_image_array(self):
+        """Получить изображение в виде numpy массива"""
+        return self._image_array
 
+    @classmethod
+    def fetch_images(cls, limit=1):
+        """Получение нескольких изображений животных через API"""
+        try:
+            response = requests.get(
+                cls.API_URL,
+                params={
+                    "has_breeds": 1,
+                    "limit": limit,
+                    "api_key": os.getenv('CAT_API_KEY')
+                }
+            )
+            response.raise_for_status()
+            data = response.json()
 
-def imageHGistogram(image):
-    """Выравнивание гистограммы изображения"""
-    if len(image.shape) != 3 or image.shape[2] != 3:
-        raise ValueError("Функция работает только с RGB изображениями")
+            if not data:
+                raise ValueError("No data received from API")
 
-    # Копируем массив, чтобы не изменять оригинал
-    result = image.copy().astype(np.float32)
+            processors = []
+            for item in data:
+                image_url = item['url']
 
-    for i in range(3):
-        channel = result[:, :, i]
-        min_val = np.min(channel)
-        max_val = np.max(channel)
+                # Проверяем, есть ли информация о породе
+                if 'breeds' not in item or not item['breeds']:
+                    print("Warning: No breed information available, using 'unknown'")
+                    breed_name = 'unknown'
+                else:
+                    breed_info = item['breeds'][0]
+                    breed_name = breed_info.get('name', 'unknown').replace(' ', '_').lower()
 
-        if max_val - min_val > 0:
-            result[:, :, i] = 255 * (channel - min_val) / (max_val - min_val)
-        else:
-            result[:, :, i] = channel
+                processors.append(cls(image_url, breed_name))
 
-    return np.clip(result, 0, 255).astype(np.uint8)
+            return processors
+        except Exception as e:
+            print(f"Error fetching images from API: {e}")
+            raise
 
+    def download_image(self):
+        """Загрузка изображения по URL"""
+        try:
+            if not self._image_url:
+                raise ValueError("No image URL set")
 
-def download_image(url, filename):
-    """Загрузка и сохранение изображения"""
-    try:
-        response = requests.get(url, stream=True, timeout=10)
-        response.raise_for_status()
+            response = requests.get(self._image_url, stream=True, timeout=10)
+            response.raise_for_status()
 
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
+            # Создаем временный файл для сохранения
+            os.makedirs(self.OUTPUT_DIR, exist_ok=True)
+            temp_file = os.path.join(self.OUTPUT_DIR, "temp_image.jpg")
 
-        with open(filename, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        return True
-    except Exception as e:
-        print(f"Error downloading image: {e}")
-        raise
+            with open(temp_file, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
 
+            # Загружаем изображение в numpy массив
+            self._image_array = np.array(Image.open(temp_file))
 
-def manual_convolution(image, kernel):
-    """Ручная реализация свертки 3x3"""
-    if len(image.shape) == 2:  # Grayscale
-        result = _convolve_channel(image, kernel)
-    elif len(image.shape) == 3:  # RGB
-        channels = []
+            # Удаляем временный файл
+            os.remove(temp_file)
+
+            return True
+        except Exception as e:
+            print(f"Error downloading image: {e}")
+            raise
+
+    @staticmethod
+    def _histogram_equalization(image):
+        """Выравнивание гистограммы изображения (приватный метод)"""
+        if len(image.shape) != 3 or image.shape[2] != 3:
+            raise ValueError("Функция работает только с RGB изображениями")
+
+        # Копируем массив, чтобы не изменять оригинал
+        result = image.copy().astype(np.float32)
+
         for i in range(3):
-            channels.append(_convolve_channel(image[:, :, i], kernel))
-        result = np.stack(channels, axis=2)
-    else:
-        raise ValueError("Unsupported image dimensions")
+            channel = result[:, :, i]
+            min_val = np.min(channel)
+            max_val = np.max(channel)
 
-    return np.clip(result, 0, 255).astype(np.uint8)
+            if max_val - min_val > 0:
+                result[:, :, i] = 255 * (channel - min_val) / (max_val - min_val)
+            else:
+                result[:, :, i] = channel
 
+        return np.clip(result, 0, 255).astype(np.uint8)
 
-def _convolve_channel(channel, kernel):
-    """Свертка для одного канала"""
-    # Подготовка выходного массива
-    output = np.zeros_like(channel, dtype=np.float32)
+    def _manual_convolution(self, image, kernel):
+        """Ручная реализация свертки 3x3 (приватный метод)"""
+        if len(image.shape) == 2:  # Grayscale
+            result = self._convolve_channel(image, kernel)
+        elif len(image.shape) == 3:  # RGB
+            channels = []
+            for i in range(3):
+                channels.append(self._convolve_channel(image[:, :, i], kernel))
+            result = np.stack(channels, axis=2)
+        else:
+            raise ValueError("Unsupported image dimensions")
 
-    # Добавление padding
-    pad_size = kernel.shape[0] // 2
-    padded = np.pad(channel, pad_size, mode='reflect')
+        return np.clip(result, 0, 255).astype(np.uint8)
 
-    # Применение свертки
-    for y in range(output.shape[0]):
-        for x in range(output.shape[1]):
-            region = padded[y:y + 3, x:x + 3]
-            output[y, x] = np.sum(region * kernel)
+    def _convolve_channel(self, channel, kernel):
+        """Свертка для одного канала (приватный метод)"""
+        # Подготовка выходного массива
+        output = np.zeros_like(channel, dtype=np.float32)
 
-    return output
+        # Добавление padding
+        pad_size = kernel.shape[0] // 2
+        padded = np.pad(channel, pad_size, mode='reflect')
 
+        # Применение свертки
+        for y in range(output.shape[0]):
+            for x in range(output.shape[1]):
+                region = padded[y:y + 3, x:x + 3]
+                output[y, x] = np.sum(region * kernel)
 
-def process_image(image_path, breed_name):
-    """Обработка изображения разными методами свертки"""
-    try:
-        # Загрузка изображения
-        img = Image.open(image_path)
-        img_array = np.array(img)
+        return output
+
+    def manual_process(self):
+        """Обработка изображения ручной сверткой"""
+        if self._image_array is None:
+            raise ValueError("No image loaded for processing")
 
         # 1. Ручная свертка
-        manual_result = manual_convolution(img_array, KERNEL)
+        manual_result = self._manual_convolution(self._image_array, self.KERNEL)
 
         # Применяем выравнивание гистограммы только для RGB изображений
         if len(manual_result.shape) == 3:
-            manual_result = imageHGistogram(manual_result)
+            manual_result = self._histogram_equalization(manual_result)
 
-        manual_filename = os.path.join(OUTPUT_DIR, f"manual_{breed_name}.jpg")
-        Image.fromarray(manual_result).save(manual_filename)
+        return {'manual': manual_result}
+
+    def scipy_process(self):
+        """Обработка изображения с использованием scipy"""
+        if self._image_array is None:
+            raise ValueError("No image loaded for processing")
 
         # 2. Scipy свертка
-        if len(img_array.shape) == 3:  # RGB
-            scipy_result = np.zeros_like(img_array, dtype=np.float32)
+        if len(self._image_array.shape) == 3:  # RGB
+            scipy_result = np.zeros_like(self._image_array, dtype=np.float32)
             for i in range(3):
-                scipy_result[:, :, i] = convolve(img_array[:, :, i].astype(float),
-                                               KERNEL, mode='reflect')
+                scipy_result[:, :, i] = convolve(self._image_array[:, :, i].astype(float),
+                                                 self.KERNEL, mode='reflect')
         else:  # серые тона
-            scipy_result = convolve(img_array.astype(float), KERNEL, mode='reflect')
+            scipy_result = convolve(self._image_array.astype(float), self.KERNEL, mode='reflect')
 
         scipy_result = np.clip(scipy_result, 0, 255).astype(np.uint8)
-        scipy_filename = os.path.join(OUTPUT_DIR, f"scipy_{breed_name}.jpg")
-        Image.fromarray(scipy_result).save(scipy_filename)
 
-        return {
-            'original': image_path,
-            'manual': manual_filename,
-            'scipy': scipy_filename
-        }
-    except Exception as e:
-        print(f"Error processing image: {e}")
-        raise
+        return {'scipy': scipy_result}
+
+    def save_images(self, index, processed_results, suffix):
+        """Сохранение обработанных изображений"""
+        if self._image_array is None:
+            raise ValueError("No image loaded for saving")
+
+        try:
+            os.makedirs(self.OUTPUT_DIR, exist_ok=True)
+
+            # Определяем имя файла на основе типа обработки
+            filename = os.path.join(
+                self.OUTPUT_DIR,
+                f"{index}_{self._breed_name}_{suffix}.jpg"
+            )
+
+            # Сохраняем обработанное изображение
+            Image.fromarray(processed_results[list(processed_results.keys())[0]]).save(filename)
+
+            return filename
+        except Exception as e:
+            print(f"Error saving images: {e}")
+            raise
 
 
 def main():
     """Основная функция выполнения программы"""
     try:
-        # Создание директории для результатов
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        # Получаем 3 изображения от API
+        processors = ImageProcessor.fetch_images(limit=3)
 
-        # Получение изображения
-        image_url, breed_name = get_animal_image()
-        original_filename = os.path.join(OUTPUT_DIR, f"original_{breed_name}.jpg")
-        download_image(image_url, original_filename)
+        print(f"\nПолучено {len(processors)} изображений для обработки")
 
-        # Обработка изображения
-        results = process_image(original_filename, breed_name)
+        results = []
+        for i, processor in enumerate(processors, 1):
+            print(f"\nОбработка изображения {i}...")
 
-        # Вывод результатов
-        print("\nОбработка завершена. Сохраненные файлы:")
-        print(f"- Исходное изображение: {results['original']}")
-        print(f"- Ручная свертка: {results['manual']}")
-        print(f"- SciPy свертка: {results['scipy']}")
+            # Загружаем изображение
+            processor.download_image()
 
+            # Сохраняем оригинал
+            original_filename = os.path.join(
+                processor.OUTPUT_DIR,
+                f"{i}_{processor.get_breed_name()}_original.jpg"
+            )
+            Image.fromarray(processor.get_image_array()).save(original_filename)
+
+            # Обрабатываем изображение
+            processed_manual = processor.manual_process()
+            processed_scipy = processor.scipy_process()
+
+            # Сохраняем результаты
+            saved_manual = processor.save_images(i, processed_manual, "manual")
+            saved_scipy = processor.save_images(i, processed_scipy, "scipy")
+
+            results.append({
+                'original': original_filename,
+                'manual': saved_manual,
+                'scipy': saved_scipy
+            })
+
+            print(f"Изображение {i} сохранено как:")
+            print(f"- Оригинал: {original_filename}")
+            print(f"- Ручная обработка: {saved_manual}")
+            print(f"- Scipy обработка: {saved_scipy}")
+
+        print("\nВсе изображения успешно обработаны!")
+        return 0
     except Exception as e:
         print(f"\nПроизошла ошибка: {e}")
         return 1
-
-    return 0
 
 
 main()
