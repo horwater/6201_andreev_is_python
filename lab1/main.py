@@ -81,7 +81,9 @@ class ImagePipeline:
         """Генерация обработанных изображений"""
         for img_data in gen:
             # 1. Ручная обработка
-            manual_result = next(self._manual_convolution(img_data["image_array"], self.KERNEL))
+            manual_result = next(
+                self._manual_convolution(img_data["image_array"], self.KERNEL)
+            )
 
             # 2. Обработка с помощью SciPy
             scipy_result = next(self._scipy_convolution(img_data["image_array"]))
@@ -125,13 +127,15 @@ class ImagePipeline:
 
             # Сохранение оригинала
             original_filename = os.path.join(
-                self.OUTPUT_DIR, f"{img_data['idx']}_{img_data['breed_name']}_original.jpg"
+                self.OUTPUT_DIR,
+                f"{img_data['idx']}_{img_data['breed_name']}_original.jpg",
             )
             Image.fromarray(img_data["image_array"]).save(original_filename)
 
             # Сохранение ручного результата
             manual_filename = os.path.join(
-                self.OUTPUT_DIR, f"{img_data['idx']}_{img_data['breed_name']}_manual.jpg"
+                self.OUTPUT_DIR,
+                f"{img_data['idx']}_{img_data['breed_name']}_manual.jpg",
             )
             Image.fromarray(img_data["manual"]).save(manual_filename)
 
@@ -149,7 +153,9 @@ class ImagePipeline:
 
     def run_pipeline(self):
         """Метод запуска всего пайплайна."""
-        save_gen = self.save_images(self.process_image(self.download_image(self.fetch_images())))
+        save_gen = self.save_images(
+            self.process_image(self.download_image(self.fetch_images()))
+        )
 
         # Итерация по последнему генератору
         for final_data in save_gen:
