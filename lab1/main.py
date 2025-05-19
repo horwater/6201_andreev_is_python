@@ -1,6 +1,7 @@
 import aiohttp
 import asyncio
 import numpy as np
+from fontTools.merge.util import current_time
 from scipy.ndimage import convolve
 from PIL import Image
 import os
@@ -8,18 +9,20 @@ from dotenv import load_dotenv
 from numba import njit
 from multiprocessing import Pool, cpu_count
 import time
-from datetime import datetime
+import datetime
 
 # Загрузка ременных окружения
 load_dotenv()
 
 
 class AsyncImagePipeline:
-    """Асинхронный класс конвейера с параллельной обработкой"""
+    """Асинхронный класс конвейера с параллельной обработкой
+    для использования thecatapi требуется vpn, поэтому от семафора отказался"""
 
     API_URL = os.getenv("CAT_API_URL")
     OUTPUT_DIR = "processed_images"
     KERNEL = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    current_time=datetime.datetime.now()
 
     def __init__(self, limit=1):
         """Инициализация"""
@@ -61,7 +64,7 @@ class AsyncImagePipeline:
         """Асинхронная загрузка изображений"""
         async for img_data in img_gen:
             start_time = time.time()
-            print(f"\nНачало загрузки изображения {img_data['idx']}...")
+            print(f"\n{self.current_time} Начало загрузки изображения {img_data['idx']}...")
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(img_data["image_url"]) as response:
@@ -81,7 +84,7 @@ class AsyncImagePipeline:
 
                 elapsed = time.time() - start_time
                 print(
-                    f"Изображение {img_data['idx']} загружено ({elapsed:.2f} сек, размер: {image_array.shape})"
+                    f"{self.current_time} Изображение {img_data['idx']} загружено ({elapsed:.2f} сек, размер: {image_array.shape})"
                 )
 
                 yield {"image_array": image_array, **img_data}
@@ -100,7 +103,7 @@ class AsyncImagePipeline:
     def _process_single_image(self, img_data):
         """Обработка одного изображения (для многопроцессорной обработки)"""
         idx = img_data["idx"]
-        print(f"Начало обработки изображения {idx} в процессе {os.getpid()}...")
+        print(f"{self.current_time} Начало обработки изображения {idx} в процессе {os.getpid()}...")
         start_time = time.time()
 
         image_array = img_data["image_array"]
@@ -142,19 +145,19 @@ class AsyncImagePipeline:
         return {"manual": manual_result, "scipy": scipy_result, **img_data}
 
     async def process_images(self, img_gen):
-        """Параллельная обработка изображений с использованием multiprocessing"""
-        # Собираем все изображения для параллельной обработки
+        """Параллельная обработка изображений"""
+        # все изображения для параллельной обработки
         images_to_process = []
         async for img_data in img_gen:
             images_to_process.append(img_data)
 
         print(
-            f"\nНачало параллельной обработки {len(images_to_process)} изображений на {cpu_count()} ядрах..."
+            f"\nНачало параллельной обработки {len(images_to_process)} изображений на {cpu_count()//2} ядрах..."
         )
         start_time = time.time()
 
         # Обработка в пуле процессов
-        with Pool(processes=cpu_count()) as pool:
+        with Pool(processes=cpu_count()//2) as pool:
             results = pool.map(self._process_single_image, images_to_process)
 
         elapsed = time.time() - start_time
@@ -194,7 +197,7 @@ class AsyncImagePipeline:
             Image.fromarray(img_data["scipy"]).save(scipy_filename)
 
             elapsed = time.time() - start_time
-            print(f"Изображение {idx} сохранено ({elapsed:.2f} сек)")
+            print(f"{self.current_time} Изображение {idx} сохранено ({elapsed:.2f} сек)")
 
             yield {
                 "original": original_filename,
@@ -214,8 +217,8 @@ class AsyncImagePipeline:
         save_gen = self.save_images(process_gen)
 
         # Итерируемся по финальному генератору
-        async for result in save_gen:
-            print(f"Готово: {result}")
+        async for final_data in save_gen:
+            print(f"Готово: {final_data}")
 
         total_elapsed = time.time() - total_start
         print(f"\nВесь пайплайн завершен за {total_elapsed:.2f} секунд")
