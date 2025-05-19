@@ -1,13 +1,14 @@
-import aiohttp
-import asyncio
 import numpy as np
-from fontTools.merge.util import current_time
 from scipy.ndimage import convolve
 from PIL import Image
 import os
 from dotenv import load_dotenv
 from numba import njit
+
+import aiohttp
+import asyncio
 from multiprocessing import Pool, cpu_count
+
 import time
 import datetime
 
@@ -22,7 +23,7 @@ class AsyncImagePipeline:
     API_URL = os.getenv("CAT_API_URL")
     OUTPUT_DIR = "processed_images"
     KERNEL = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-    current_time=datetime.datetime.now()
+    current_time = datetime.datetime.now()
 
     def __init__(self, limit=1):
         """Инициализация"""
@@ -64,7 +65,9 @@ class AsyncImagePipeline:
         """Асинхронная загрузка изображений"""
         async for img_data in img_gen:
             start_time = time.time()
-            print(f"\n{self.current_time} Начало загрузки изображения {img_data['idx']}...")
+            print(
+                f"\n{self.current_time} Начало загрузки изображения {img_data['idx']}..."
+            )
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(img_data["image_url"]) as response:
@@ -103,7 +106,9 @@ class AsyncImagePipeline:
     def _process_single_image(self, img_data):
         """Обработка одного изображения (для многопроцессорной обработки)"""
         idx = img_data["idx"]
-        print(f"{self.current_time} Начало обработки изображения {idx} в процессе {os.getpid()}...")
+        print(
+            f"{self.current_time} Начало обработки изображения {idx} в процессе {os.getpid()}..."
+        )
         start_time = time.time()
 
         image_array = img_data["image_array"]
@@ -157,7 +162,7 @@ class AsyncImagePipeline:
         start_time = time.time()
 
         # Обработка в пуле процессов
-        with Pool(processes=cpu_count()//2) as pool:
+        with Pool(processes=cpu_count() // 2) as pool:
             results = pool.map(self._process_single_image, images_to_process)
 
         elapsed = time.time() - start_time
@@ -197,7 +202,9 @@ class AsyncImagePipeline:
             Image.fromarray(img_data["scipy"]).save(scipy_filename)
 
             elapsed = time.time() - start_time
-            print(f"{self.current_time} Изображение {idx} сохранено ({elapsed:.2f} сек)")
+            print(
+                f"{self.current_time} Изображение {idx} сохранено ({elapsed:.2f} сек)"
+            )
 
             yield {
                 "original": original_filename,
@@ -224,10 +231,14 @@ class AsyncImagePipeline:
         print(f"\nВесь пайплайн завершен за {total_elapsed:.2f} секунд")
 
 
-async def main():
-    pipeline = AsyncImagePipeline(limit=4)
+async def main(limit):
+    pipeline = AsyncImagePipeline(limit)
     await pipeline.run_pipeline()
 
-
-if __name__ == "__main__":
-    asyncio.run(main())
+#запуск с возможной передачей аргумента limit через консоль
+if (__name__ == '__main__'):
+    import sys
+    if len(sys.argv) > 1:
+        asyncio.run(main(int(sys.argv[1])))
+    else:
+        asyncio.run(main(2))
