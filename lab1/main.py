@@ -29,8 +29,8 @@ class AsyncImagePipeline:
     async def fetch_data(self):
         """Асинхронное получение данных"""
         start_time = time.time()
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚡ Начало загрузки метаданных для {self.limit} изображений...")
-        
+        print(f"\nНачало загрузки метаданных для {self.limit} изображений...")
+
         async with aiohttp.ClientSession() as session:
             params = {
                 "has_breeds": 1,
@@ -40,9 +40,9 @@ class AsyncImagePipeline:
             async with session.get(self.API_URL, params=params) as response:
                 response.raise_for_status()
                 self.data = await response.json()
-        
+
         elapsed = time.time() - start_time
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Метаданные загружены ({elapsed:.2f} сек)")
+        print(f"Метаданные загружены ({elapsed:.2f} сек)")
 
     async def fetch_images(self):
         """Асинхронный генератор для извлечения данных изображений"""
@@ -50,7 +50,7 @@ class AsyncImagePipeline:
             await self.fetch_data()
 
         for idx, item in enumerate(self.data):
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] 🖼️ Получена информация об изображении {idx + 1}/{self.limit}")
+            print(f"Получена информация об изображении {idx + 1}/{self.limit}")
             yield {
                 "idx": idx + 1,
                 "image_url": item["url"],
@@ -61,8 +61,8 @@ class AsyncImagePipeline:
         """Асинхронная загрузка изображений"""
         async for img_data in img_gen:
             start_time = time.time()
-            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⬇️ Начало загрузки изображения {img_data['idx']}...")
-            
+            print(f"\nНачало загрузки изображения {img_data['idx']}...")
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(img_data["image_url"]) as response:
                     response.raise_for_status()
@@ -78,13 +78,16 @@ class AsyncImagePipeline:
                 # Преобразование в numpy array
                 image_array = np.array(Image.open(temp_file))
                 os.remove(temp_file)
-                
+
                 elapsed = time.time() - start_time
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Изображение {img_data['idx']} загружено ({elapsed:.2f} сек, размер: {image_array.shape})")
-                
+                print(
+                    f"Изображение {img_data['idx']} загружено ({elapsed:.2f} сек, размер: {image_array.shape})"
+                )
+
                 yield {"image_array": image_array, **img_data}
 
     @staticmethod
+    @njit
     def _convolve_channel(channel, kernel, padded):
         """Свертка для одного канала"""
         output = np.zeros_like(channel, dtype=np.float32)
@@ -97,11 +100,11 @@ class AsyncImagePipeline:
     def _process_single_image(self, img_data):
         """Обработка одного изображения (для многопроцессорной обработки)"""
         idx = img_data["idx"]
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚙️ Начало обработки изображения {idx} в процессе {os.getpid()}...")
+        print(f"Начало обработки изображения {idx} в процессе {os.getpid()}...")
         start_time = time.time()
-        
+
         image_array = img_data["image_array"]
-        
+
         # Ручная свертка
         if len(image_array.shape) == 2:  # grayscale
             pad_size = self.KERNEL.shape[0] // 2
@@ -112,24 +115,30 @@ class AsyncImagePipeline:
             for i in range(3):
                 pad_size = self.KERNEL.shape[0] // 2
                 padded = np.pad(image_array[:, :, i], pad_size, mode="reflect")
-                channels.append(self._convolve_channel(image_array[:, :, i], self.KERNEL, padded))
+                channels.append(
+                    self._convolve_channel(image_array[:, :, i], self.KERNEL, padded)
+                )
             manual_result = np.stack(channels, axis=2)
         manual_result = np.clip(manual_result, 0, 255).astype(np.uint8)
 
         # SciPy свертка
         if len(image_array.shape) == 3:  # RGB
             channels = [
-                convolve(image_array[:, :, i].astype(float), self.KERNEL, mode="reflect")
+                convolve(
+                    image_array[:, :, i].astype(float), self.KERNEL, mode="reflect"
+                )
                 for i in range(3)
             ]
             scipy_result = np.stack(channels, axis=-1)
         else:  # grayscale
-            scipy_result = convolve(image_array.astype(float), self.KERNEL, mode="reflect")
+            scipy_result = convolve(
+                image_array.astype(float), self.KERNEL, mode="reflect"
+            )
         scipy_result = np.clip(scipy_result, 0, 255).astype(np.uint8)
-        
+
         elapsed = time.time() - start_time
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Изображение {idx} обработано ({elapsed:.2f} сек)")
-        
+        print(f"Изображение {idx} обработано ({elapsed:.2f} сек)")
+
         return {"manual": manual_result, "scipy": scipy_result, **img_data}
 
     async def process_images(self, img_gen):
@@ -139,15 +148,17 @@ class AsyncImagePipeline:
         async for img_data in img_gen:
             images_to_process.append(img_data)
 
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🚀 Начало параллельной обработки {len(images_to_process)} изображений на {cpu_count()} ядрах...")
+        print(
+            f"\nНачало параллельной обработки {len(images_to_process)} изображений на {cpu_count()} ядрах..."
+        )
         start_time = time.time()
-        
+
         # Обработка в пуле процессов
         with Pool(processes=cpu_count()) as pool:
             results = pool.map(self._process_single_image, images_to_process)
-        
+
         elapsed = time.time() - start_time
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Все изображения обработаны параллельно ({elapsed:.2f} сек)")
+        print(f"Все изображения обработаны параллельно ({elapsed:.2f} сек)")
 
         # Возвращаем результаты через генератор
         for result in results:
@@ -156,12 +167,12 @@ class AsyncImagePipeline:
     async def save_images(self, img_gen):
         """Асинхронное сохранение изображений"""
         os.makedirs(self.OUTPUT_DIR, exist_ok=True)
-        
+
         async for img_data in img_gen:
             idx = img_data["idx"]
             start_time = time.time()
-            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 💾 Начало сохранения изображения {idx}...")
-            
+            print(f"\nНачало сохранения изображения {idx}...")
+
             # Сохранение оригинала
             original_filename = os.path.join(
                 self.OUTPUT_DIR,
@@ -181,10 +192,10 @@ class AsyncImagePipeline:
                 self.OUTPUT_DIR, f"{idx}_{img_data['breed_name']}_scipy.jpg"
             )
             Image.fromarray(img_data["scipy"]).save(scipy_filename)
-            
+
             elapsed = time.time() - start_time
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Изображение {idx} сохранено ({elapsed:.2f} сек)")
-            
+            print(f"Изображение {idx} сохранено ({elapsed:.2f} сек)")
+
             yield {
                 "original": original_filename,
                 "manual": manual_filename,
@@ -194,8 +205,8 @@ class AsyncImagePipeline:
     async def run_pipeline(self):
         """Запуск всего асинхронного пайплайна"""
         total_start = time.time()
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🏁 Запуск пайплайна для {self.limit} изображений")
-        
+        print(f"Запуск пайплайна для {self.limit} изображений")
+
         # Создаем асинхронный генератор
         img_gen = self.fetch_images()
         download_gen = self.download_image(img_gen)
@@ -204,10 +215,10 @@ class AsyncImagePipeline:
 
         # Итерируемся по финальному генератору
         async for result in save_gen:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] 🎉 Готово: {result}")
+            print(f"Готово: {result}")
 
         total_elapsed = time.time() - total_start
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🌟 Весь пайплайн завершен за {total_elapsed:.2f} секунд")
+        print(f"\nВесь пайплайн завершен за {total_elapsed:.2f} секунд")
 
 
 async def main():
