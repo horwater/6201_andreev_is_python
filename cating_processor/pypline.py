@@ -1,34 +1,31 @@
 import numpy as np
-from scipy.ndimage import convolve
-from PIL import Image
 import os
 from dotenv import load_dotenv
-from numba import njit
 
+from multiprocessing import Pool, cpu_count
 import aiohttp
 import asyncio
-from multiprocessing import Pool, cpu_count
 
+from PIL import Image
 import time
 import datetime
 
-# Загрузка ременных окружения
+from cating_processor.image_processor import ImageProcessor
+
 load_dotenv()
 
 
 class AsyncImagePipeline:
-    """Асинхронный класс конвейера с параллельной обработкой
-    для использования thecatapi требуется vpn, поэтому от семафора отказался"""
+    """Async pipeline class with parallel processing"""
 
     API_URL = os.getenv("CAT_API_URL")
     OUTPUT_DIR = "processed_images"
-    KERNEL = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
     current_time = datetime.datetime.now()
 
     def __init__(self, limit=1):
-        """Инициализация"""
         self.limit = limit
         self.data = None
+        self.processor = ImageProcessor()
 
     async def fetch_data(self):
         """Асинхронное получение данных"""
@@ -47,6 +44,7 @@ class AsyncImagePipeline:
 
         elapsed = time.time() - start_time
         print(f"Метаданные загружены ({elapsed:.2f} сек)")
+        return start_time
 
     async def fetch_images(self):
         """Асинхронный генератор для извлечения данных изображений"""
@@ -91,79 +89,26 @@ class AsyncImagePipeline:
                 )
 
                 yield {"image_array": image_array, **img_data}
-
     @staticmethod
-    @njit
-    def _convolve_channel(channel, kernel, padded):
-        """Свертка для одного канала"""
-        output = np.zeros_like(channel, dtype=np.float32)
-        for y in range(output.shape[0]):
-            for x in range(output.shape[1]):
-                region = padded[y : y + 3, x : x + 3]
-                output[y, x] = np.sum(region * kernel)
-        return output
-
-    def _process_single_image(self, img_data):
-        """Обработка одного изображения (для многопроцессорной обработки)"""
-        idx = img_data["idx"]
-        print(
-            f"{self.current_time} Начало обработки изображения {idx} в процессе {os.getpid()}..."
-        )
-        start_time = time.time()
-
-        image_array = img_data["image_array"]
-
-        # Ручная свертка
-        if len(image_array.shape) == 2:  # grayscale
-            pad_size = self.KERNEL.shape[0] // 2
-            padded = np.pad(image_array, pad_size, mode="reflect")
-            manual_result = self._convolve_channel(image_array, self.KERNEL, padded)
-        else:  # RGB
-            channels = []
-            for i in range(3):
-                pad_size = self.KERNEL.shape[0] // 2
-                padded = np.pad(image_array[:, :, i], pad_size, mode="reflect")
-                channels.append(
-                    self._convolve_channel(image_array[:, :, i], self.KERNEL, padded)
-                )
-            manual_result = np.stack(channels, axis=2)
-        manual_result = np.clip(manual_result, 0, 255).astype(np.uint8)
-
-        # SciPy свертка
-        if len(image_array.shape) == 3:  # RGB
-            channels = [
-                convolve(
-                    image_array[:, :, i].astype(float), self.KERNEL, mode="reflect"
-                )
-                for i in range(3)
-            ]
-            scipy_result = np.stack(channels, axis=-1)
-        else:  # grayscale
-            scipy_result = convolve(
-                image_array.astype(float), self.KERNEL, mode="reflect"
-            )
-        scipy_result = np.clip(scipy_result, 0, 255).astype(np.uint8)
-
-        elapsed = time.time() - start_time
-        print(f"Изображение {idx} обработано ({elapsed:.2f} сек)")
-
-        return {"manual": manual_result, "scipy": scipy_result, **img_data}
+    def process_wrapper(img_data):
+        """Wrapper function for processing a single image (must be at class level)"""
+        processor = ImageProcessor()
+        return processor.process_single_image(img_data)
 
     async def process_images(self, img_gen):
-        """Параллельная обработка изображений"""
-        # все изображения для параллельной обработки
+        """Параллельная обработка изображений с правильным использованием multiprocessing.Pool"""
+        # Собираем все изображения для обработки
         images_to_process = []
         async for img_data in img_gen:
             images_to_process.append(img_data)
 
-        print(
-            f"\nНачало параллельной обработки {len(images_to_process)} изображений на {cpu_count()//2} ядрах..."
-        )
+        print(f"\nНачало параллельной обработки {len(images_to_process)} изображений на {cpu_count() // 2} ядрах...")
         start_time = time.time()
 
         # Обработка в пуле процессов
+
         with Pool(processes=cpu_count() // 2) as pool:
-            results = pool.map(self._process_single_image, images_to_process)
+            results = pool.map(self.process_wrapper, images_to_process)
 
         elapsed = time.time() - start_time
         print(f"Все изображения обработаны параллельно ({elapsed:.2f} сек)")
@@ -225,16 +170,3 @@ class AsyncImagePipeline:
 
         total_elapsed = time.time() - total_start
         print(f"\nВесь пайплайн завершен за {total_elapsed:.2f} секунд")
-
-
-async def main(limit):
-    pipeline = AsyncImagePipeline(limit)
-    await pipeline.run_pipeline()
-
-#запуск с возможной передачей аргумента limit через консоль
-if (__name__ == '__main__'):
-    import sys
-    if len(sys.argv) > 1:
-        asyncio.run(main(int(sys.argv[1])))
-    else:
-        asyncio.run(main(2))
