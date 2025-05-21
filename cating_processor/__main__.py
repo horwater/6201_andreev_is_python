@@ -1,12 +1,12 @@
 import asyncio
 import sys
-from pypline import AsyncImagePipeline
+from cating_processor.pypline import AsyncImagePipeline
 
 async def main(limit):
     pipeline = AsyncImagePipeline(limit)
     await pipeline.run_pipeline()
 
-if __name__ == '__main__':
+if (__name__ == '__main__'):
     if len(sys.argv) > 1:
         asyncio.run(main(int(sys.argv[1])))
     else:
