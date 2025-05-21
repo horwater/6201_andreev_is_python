@@ -21,4 +21,5 @@ dependencies = [
 ]
 
 [project.scripts]
-cating_processor = "cating_processor.__main__:main"
+cating_processor = ".__main__:main"
+
