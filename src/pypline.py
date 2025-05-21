@@ -4,13 +4,12 @@ from dotenv import load_dotenv
 
 from multiprocessing import Pool, cpu_count
 import aiohttp
-import asyncio
 
 from PIL import Image
 import time
 import datetime
 
-from cating_processor.image_processor import ImageProcessor
+from src.image_processor import ImageProcessor
 
 load_dotenv()
 

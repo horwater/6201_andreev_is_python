@@ -1,6 +1,6 @@
 import asyncio
 import sys
-from cating_processor.pypline import AsyncImagePipeline
+from src.pypline import AsyncImagePipeline
 
 async def main(limit):
     pipeline = AsyncImagePipeline(limit)
