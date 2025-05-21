@@ -217,11 +217,7 @@ class AsyncImagePipeline:
         total_start = time.time()
         print(f"Запуск пайплайна для {self.limit} изображений")
 
-        # Создаем асинхронный генератор
-        img_gen = self.fetch_images()
-        download_gen = self.download_image(img_gen)
-        process_gen = self.process_images(download_gen)
-        save_gen = self.save_images(process_gen)
+        save_gen = self.save_images(self.process_images(self.download_image(self.fetch_images())))
 
         # Итерируемся по финальному генератору
         async for final_data in save_gen:
